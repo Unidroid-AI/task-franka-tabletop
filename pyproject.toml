@@ -1,0 +1,9 @@
+# Install the package with:
+#   python -m pip install -e source/franka_tabletop
+# from a machine that has Isaac Lab 3.0. That package publishes the isaaclab.tasks entry point.
+
+[project]
+name = "task-franka-tabletop"
+version = "0.1.0"
+description = "Franka tabletop manipulation benchmark for a fixed GR00T N1.7 tournament."
+requires-python = ">=3.11"

@@ -1,0 +1,7 @@
+entry: policy:Gr00tN17Brain
+horizon: 8
+action_dim: 8
+embodiment_tag: set-from-checkpoint-card
+max_gpu_mem_gb: 24
+parent_submission: null
+weights: {}
