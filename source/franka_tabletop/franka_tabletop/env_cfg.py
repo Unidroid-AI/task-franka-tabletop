@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from isaaclab_physx.physics import PhysxCfg
@@ -32,6 +33,7 @@ from .core.sensors import exterior_left_camera, exterior_right_camera, finger_co
 from .scenes.bundle import (
     read_stage,
     resolve_background,
+    resolve_bundle_path,
     resolve_surface,
     surface_pose,
     xyzw_from_wxyz,
@@ -459,6 +461,7 @@ def build_cfg(
     pose_jitter_m: float = 0.0,
     observation: dict | None = None,
     scenes: list[tuple[str, str]] | None = None,
+    bundle_path: str | Path | None = None,
 ) -> TabletopBenchmarkEnvCfg:
     """Build a cfg for one group of episodes that build the same stage.
 
@@ -474,6 +477,9 @@ def build_cfg(
         observation: The brain's ``observation`` block: ``cameras`` and ``image_hw``.
             ``None`` renders and sends every observation camera at full size and keeps
             the images in the ``policy`` observation group for an in-process policy.
+        bundle_path: Extracted bundle directory. When given (or ``$ISAAC_EVAL_BUNDLE_DIR``
+            is set, or ``~/.unidroid/bench-cache/<env_id>/bundle`` exists), assets are read
+            directly without invoking ``nepher.load_env``.
     """
     cfg = TabletopBenchmarkEnvCfg()
     cfg.observation_cameras = requested_cameras(observation)
@@ -491,10 +497,6 @@ def build_cfg(
         if len(pairs) != num_envs or pairs[0] != (task_id, scene):
             raise ValueError("scenes must list one (task, scene) per env, starting with task_id and scene")
         cfg.mixed_scenes = pairs
-    if env_id:
-        from nepher import load_env
-
-        loaded = load_env(env_id, category="manipulation")
-        cfg.bundle_path = str(loaded.cache_path)
+    cfg.bundle_path = resolve_bundle_path(env_id, bundle_path)
     _apply_benchmark_assets(cfg)
     return cfg

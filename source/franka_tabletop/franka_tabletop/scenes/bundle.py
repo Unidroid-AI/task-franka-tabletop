@@ -15,9 +15,48 @@ their bounds, and their poses for one episode.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from .catalog import ObjectAsset
+
+
+def _unwrap_manifest_dir(candidate: Path) -> Path:
+    if (candidate / "manifest.yaml").is_file():
+        return candidate
+    if candidate.is_dir():
+        children = [child for child in candidate.iterdir() if child.is_dir() and child.name != "__MACOSX"]
+        if len(children) == 1 and (children[0] / "manifest.yaml").is_file():
+            return children[0]
+    return candidate
+
+
+def resolve_bundle_path(env_id: str | None, explicit: str | Path | None = None) -> str:
+    """Resolve an extracted bundle directory without requiring ``nepher`` when local files exist.
+
+    Resolution order:
+    1. ``explicit`` path or ``$ISAAC_EVAL_BUNDLE_DIR``
+    2. ``${UNIDROID_CACHE_DIR:-${UNIDROID_HOME:-~/.unidroid}/bench-cache}/<env_id>/bundle``
+    3. ``nepher.load_env(env_id, category="manipulation")`` as a standalone fallback
+    """
+    raw = explicit or os.environ.get("ISAAC_EVAL_BUNDLE_DIR")
+    if raw:
+        return str(_unwrap_manifest_dir(Path(raw).expanduser().resolve()))
+    if not env_id:
+        return ""
+    cache_override = os.environ.get("UNIDROID_CACHE_DIR")
+    if cache_override:
+        cache_root = Path(cache_override).expanduser()
+    else:
+        home = Path(os.environ.get("UNIDROID_HOME", Path.home() / ".unidroid")).expanduser()
+        cache_root = home / "bench-cache"
+    cached = _unwrap_manifest_dir(cache_root / env_id / "bundle")
+    if (cached / "manifest.yaml").is_file():
+        return str(cached.resolve())
+    from nepher import load_env
+
+    loaded = load_env(env_id, category="manipulation")
+    return str(loaded.cache_path)
 
 
 def read_stage(bundle: str | Path) -> dict:

@@ -111,6 +111,8 @@ def main() -> None:
         "id": args.version,
         "name": "Tabletop phase",
         "category": "manipulation",
+        "format": "isaac-envhub",
+        "description": f"Tabletop manipulation benchmark ({args.version})",
         "version": args.version,
         "benchmark": True,
         "preset_scenes": [{"scene_id": "0", "preset": "benchmark.yaml"}],

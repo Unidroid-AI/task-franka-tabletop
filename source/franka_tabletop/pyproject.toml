@@ -11,8 +11,14 @@ license = "BSD-3-Clause"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.20",
+    "pyyaml>=6.0",
     # moviepy 2 removed moviepy.editor, which write_clip imports.
     "moviepy>=1.0.3,<2",
+]
+
+[project.optional-dependencies]
+envhub = [
+    "nepher>=0.1.1,<1.0",
 ]
 
 [project.entry-points."isaaclab.tasks"]
