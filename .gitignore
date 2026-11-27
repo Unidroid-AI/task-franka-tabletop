@@ -24,7 +24,5 @@ Thumbs.db
 /videos/
 *.mp4
 
-# Local checkpoints and recorded datasets
-examples/**/weights/**
-!examples/**/weights/.gitkeep
+# Recorded datasets
 /datasets/

@@ -1,4 +1,4 @@
-# Copyright (c) 2026, Nepher Robotics
+# Copyright (c) 2026, Unidroid
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -54,17 +54,12 @@ def test_published_files_and_bundle(tmp_path: Path):
     eval_config = ROOT.parent / "eval-nav" / "configs" / "task-franka-tabletop.yaml"
     if eval_config.is_file():
         files.append(eval_config)
-    from franka_tabletop.scenes.catalog import ObjectAsset
-    from franka_tabletop.scenes.composer import compose
-
-    catalog = {
-        "block": ObjectAsset("block", (0.05, 0.05, 0.05), "item", "assets/objects/block.usd"),
-        "bin": ObjectAsset("bin", (0.16, 0.16, 0.06), "container", "assets/objects/bin.usd"),
-    }
-    scene = compose(1, "place_in_container", catalog, table_m=(1.1, 0.7, 0.04), center_xy=(0.35, 0.0))
     bundle = tmp_path / "bundle"
     bundle.mkdir()
-    (bundle / "sample.json").write_text(json.dumps({"names": scene.names()}), encoding="utf-8")
+    (bundle / "sample.json").write_text(
+        json.dumps({"names": {"item": "block", "container": "bin"}}),
+        encoding="utf-8",
+    )
     (bundle / "benchmark.yaml").write_text(
         yaml.safe_dump({"version": "franka-tabletop-v1", "task_id": "place_in_container"}),
         encoding="utf-8",

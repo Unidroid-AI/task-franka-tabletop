@@ -1,4 +1,4 @@
-# Copyright (c) 2026, Nepher Robotics
+# Copyright (c) 2026, Unidroid
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -21,7 +21,7 @@ from .observation_spec import OBSERVATION_CAMERAS
 from .robot import ARM_JOINTS, GRIPPER_CLOSED_RAD
 
 # Tool-frame offset in the simulator order (x, y, z, w). The observation stores wxyz.
-# Its matrix is the DROID correction [[0, 0, -1], [-1, 0, 0], [0, 1, 0]] that GR00T's
+# Its matrix is the gripper-frame correction [[0, 0, -1], [-1, 0, 0], [0, 1, 0]] that GR00T's
 # eef_9d state expects on the gripper base_link rotation.
 _TOOL_OFFSET_XYZW = (0.5, -0.5, -0.5, 0.5)
 
