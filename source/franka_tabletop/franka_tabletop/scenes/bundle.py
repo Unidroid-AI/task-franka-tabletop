@@ -1,4 +1,4 @@
-# Copyright (c) 2026, Nepher Robotics
+# Copyright (c) 2026, Unidroid
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -38,6 +38,14 @@ def resolve_bundle_path(env_id: str | None, explicit: str | Path | None = None) 
     1. ``explicit`` path or ``$ISAAC_EVAL_BUNDLE_DIR``
     2. ``${UNIDROID_CACHE_DIR:-${UNIDROID_HOME:-~/.unidroid}/bench-cache}/<env_id>/bundle``
     3. ``nepher.load_env(env_id, category="manipulation")`` as a standalone fallback
+
+    Args:
+        env_id: Benchmark id used for the cache directory and the ``nepher`` fallback.
+        explicit: Extracted bundle directory. Overrides the environment and the cache.
+
+    Returns:
+        Absolute directory that contains ``manifest.yaml``, or ``""`` when no id and no
+        local path were given.
     """
     raw = explicit or os.environ.get("ISAAC_EVAL_BUNDLE_DIR")
     if raw:

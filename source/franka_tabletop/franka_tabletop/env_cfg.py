@@ -1,4 +1,4 @@
-# Copyright (c) 2026, Nepher Robotics
+# Copyright (c) 2026, Unidroid
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 from isaaclab_physx.physics import PhysxCfg
@@ -26,10 +25,20 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.utils import configclass
 
 from .core.clips import TILE_HW, video_directory
+from .core.contact import contact_partners, pair_sensor_name
 from .core.observation_spec import OBSERVATION_CAMERAS, requested_cameras, requested_image_hw, unused_cameras
 from .core.observations import camera_rgb, eef_pose, gripper_pos, joint_pos
 from .core.robot import franka_2f85, joint_position_action, with_position_iterations
-from .core.sensors import exterior_left_camera, exterior_right_camera, finger_contact, front_camera, wrist_camera
+from .core.sensors import (
+    exterior_left_camera,
+    exterior_right_camera,
+    finger_contact,
+    front_camera,
+    pair_contact,
+    wrist_camera,
+)
+from .core.terminations import task_success
+from .geometry import SURFACE_SLOT
 from .scenes.bundle import (
     read_stage,
     resolve_background,
@@ -38,6 +47,7 @@ from .scenes.bundle import (
     surface_pose,
     xyzw_from_wxyz,
 )
+from .scenes.composer import scene_spec
 from .scenes.mixed import SURFACE_ENTITY, ObjectVariant, plan_mixed
 
 # Replaced from the benchmark scene before the simulation starts.
@@ -90,6 +100,7 @@ class TabletopSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.UsdFileCfg(
             usd_path="assets/fixtures/pending.usd",
             rigid_props=sim_utils.UsdPhysicsRigidBodyCfg(kinematic_enabled=True),
+            activate_contact_sensors=True,
         ),
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)),
     )
@@ -150,6 +161,9 @@ class RewardsCfg:
 
 @configclass
 class TerminationsCfg:
+    """Success held for 0.5 s ends the episode. The time limit is the only failure."""
+
+    success = DoneTerm(func=task_success)
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
 
@@ -175,6 +189,8 @@ class TabletopBenchmarkEnvCfg(ManagerBasedRLEnvCfg):
     """(task, scene) of each env when one stage holds different objects per env. Empty otherwise."""
     mixed_plan: object | None = None
     """:class:`~franka_tabletop.scenes.mixed.MixedPlan` of a mixed stage. :func:`build_cfg` fills it."""
+    pair_partners: dict | None = None
+    """Per object entity, the bodies whose contact force on it the success reads. :func:`build_cfg` fills it."""
     observation_cameras: tuple[str, ...] = OBSERVATION_CAMERAS
     """Cameras sent to the brain. :func:`build_cfg` narrows this to what the brain declares."""
     observation_image_hw: tuple[int, int] | None = None
@@ -222,33 +238,6 @@ def _apply_benchmark_physics(cfg: TabletopBenchmarkEnvCfg, physics: dict) -> Non
         cfg.scene.robot = with_position_iterations(cfg.scene.robot, int(physics["solver_position_iterations"]))
     if "enhanced_determinism" in physics:
         cfg.sim.physics.isaacsim_physx.enable_enhanced_determinism = bool(physics["enhanced_determinism"])
-
-
-def play_cfg(task_id: str) -> TabletopBenchmarkEnvCfg:
-    """Cfg for a local play gym id. The eval worker uses :func:`build_cfg` instead."""
-    cfg = TabletopBenchmarkEnvCfg()
-    cfg.task_id = task_id
-    return cfg
-
-
-def play_place_in_container() -> TabletopBenchmarkEnvCfg:
-    return play_cfg("place_in_container")
-
-
-def play_place_relative() -> TabletopBenchmarkEnvCfg:
-    return play_cfg("place_relative")
-
-
-def play_stack_on() -> TabletopBenchmarkEnvCfg:
-    return play_cfg("stack_on")
-
-
-def play_sort_by_attribute() -> TabletopBenchmarkEnvCfg:
-    return play_cfg("sort_by_attribute")
-
-
-def play_multi_place() -> TabletopBenchmarkEnvCfg:
-    return play_cfg("multi_place")
 
 
 def _choice(payload: dict, key: str) -> str | None:
@@ -306,7 +295,7 @@ def _apply_benchmark_assets(cfg: TabletopBenchmarkEnvCfg) -> None:
         payloads = [payload if pair == first else _scene_payload(bundle, *pair) for pair in cfg.mixed_scenes]
         _mount_mixed(cfg, bundle, stage, payloads)
     else:
-        _mount_objects(cfg, bundle, payload["placements"])
+        _mount_objects(cfg, bundle, payload)
 
 
 def _scene_payload(bundle: Path, task_id: str, scene_id: str) -> dict:
@@ -328,8 +317,28 @@ def _tune_spawn(spawn: sim_utils.UsdFileCfg, scale, kinematic: bool) -> sim_util
     return spawn
 
 
-def _mount_objects(cfg: TabletopBenchmarkEnvCfg, bundle: Path, placements: list[dict]) -> None:
+def _anchors(payload: dict) -> set[str]:
+    return {str(item["slot"]) for item in payload["placements"] if str(item.get("kind")) == "anchor"}
+
+
+def _mount_pair_sensors(cfg: TabletopBenchmarkEnvCfg, envs: list) -> None:
+    """Add a contact sensor to each object that some env reads a pair force on.
+
+    ``envs`` holds one ``(spec, anchor slots, slot to entity)`` per env. The work surface is a partner
+    by its own prim path.
+    """
+    partners = contact_partners(envs)
+    for entity, others in partners.items():
+        paths = [
+            cfg.scene.surface.prim_path if other == SURFACE_SLOT else "{ENV_REGEX_NS}/" + other for other in others
+        ]
+        setattr(cfg.scene, pair_sensor_name(entity), pair_contact(entity, paths))
+    cfg.pair_partners = partners
+
+
+def _mount_objects(cfg: TabletopBenchmarkEnvCfg, bundle: Path, payload: dict) -> None:
     """Spawn one rigid body per placement and point both finger filters at those prims."""
+    placements = payload["placements"]
     if not placements:
         raise ValueError(f"scene {cfg.task_id}-{cfg.scene_id} places no objects")
     slots: list[str] = []
@@ -354,6 +363,8 @@ def _mount_objects(cfg: TabletopBenchmarkEnvCfg, bundle: Path, placements: list[
     cfg.scene.gripper_left.filter_prim_paths_expr = filters
     cfg.scene.gripper_right.filter_prim_paths_expr = filters
     cfg.object_slots = tuple(slots)
+    spec = scene_spec(cfg.task_id, payload)
+    _mount_pair_sensors(cfg, [(spec, _anchors(payload), {slot: slot for slot in slots})])
 
 
 def _parked_spawn() -> sim_utils.CuboidCfg:
@@ -412,6 +423,7 @@ def _mount_mixed(cfg: TabletopBenchmarkEnvCfg, bundle: Path, stage: dict, payloa
                     cfg.scene.surface.spawn.replace(usd_path=_bundle_file(bundle, str(record["usd"])))
                     for record in surfaces
                 ],
+                activate_contact_sensors=True,
             ),
             init_state=RigidObjectCfg.InitialStateCfg(pos=position, rot=xyzw_from_wxyz(quat)),
         ),
@@ -421,6 +433,11 @@ def _mount_mixed(cfg: TabletopBenchmarkEnvCfg, bundle: Path, stage: dict, payloa
     cfg.scene.gripper_right.filter_prim_paths_expr = filters
     cfg.object_slots = plan.entities
     cfg.mixed_plan = plan
+    envs = [
+        (scene_spec(task, item), _anchors(item), plan.slot_entities[env])
+        for env, ((task, _scene), item) in enumerate(zip(cfg.mixed_scenes, payloads))
+    ]
+    _mount_pair_sensors(cfg, envs)
     # Every env owns its meshes, so physics cannot copy env 0. The claim only keeps the cloner on
     # its heterogeneous path; planned_worlds supplies the actual worlds.
     cfg.scene.replicate_physics = False

@@ -1,6 +1,31 @@
-# Franka tabletop
+<p align="center">
+  <strong>UNIDROID</strong><br>
+  Training general and custom robot brains through challenges.
+</p>
 
-A manipulation benchmark for a tournament whose model is GR00T N1.7. The arm is a Franka with a 2F-85 gripper. Actions are 8-D absolute joint positions: seven arm joints in radians and a gripper command.
+# Franka tabletop manipulation in NVIDIA Isaac Lab
+
+**Franka · Robotiq 2F-85 · 8-D joint positions**
+
+[![Isaac Sim](https://img.shields.io/badge/IsaacSim-6.1-silver.svg)](https://docs.omniverse.nvidia.com/isaacsim/latest/overview.html)
+[![Isaac Lab](https://img.shields.io/badge/IsaacLab-3.0-silver)](https://isaac-sim.github.io/IsaacLab)
+[![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://docs.python.org/3/whatsnew/3.12.html)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+
+**task-franka-tabletop** is a [Unidroid](https://unidroid.ai) challenge environment for [NVIDIA Isaac Lab](https://isaac-sim.github.io/IsaacLab) and [Isaac Sim](https://docs.omniverse.nvidia.com/isaacsim/latest/overview.html). A **Franka** arm with a **Robotiq 2F-85** gripper follows a language instruction on a table. The action is an **8-D absolute joint position**: seven arm joints in radians and a gripper command.
+
+Use this repository for the Isaac Lab environment a Unidroid Franka tabletop submission is scored on.
+
+| | |
+|---|---|
+| **Robot** | Franka with a Robotiq 2F-85 gripper |
+| **Simulator** | NVIDIA Isaac Sim 6.1 + Isaac Lab 3.0 |
+| **Action** | 8 values: 7 absolute arm joints [rad] and a gripper command |
+| **Rates** | Physics 120 Hz. Commands every 8 steps (15 Hz) |
+| **Cameras sent to the brain** | `cam_exterior_left`, `cam_exterior_right`, `cam_wrist` at 720×1280 |
+| **Success** | The task predicate holds on the current state for 0.5 s |
+| **Eval** | [isaac-eval](https://github.com/Unidroid-AI/isaac-eval) with `configs/task-franka-tabletop.yaml` |
+| **License** | BSD 3-Clause. Copyright (c) 2026 Unidroid |
 
 ## Observation
 
@@ -8,55 +33,32 @@ A manipulation benchmark for a tournament whose model is GR00T N1.7. The arm is 
 | --- | --- | --- |
 | `cam_exterior_left`, `cam_exterior_right`, `cam_wrist` | `[N, 720, 1280, 3]` uint8 | image |
 | `joint_pos` | `[N, 7]` | rad |
-| `gripper_pos` | `[N, 1]` | 0..1 |
-| `eef_pose` | `[N, 7]` | m and wxyz quaternion in the base frame |
+| `gripper_pos` | `[N, 1]` | 0 open, 1 closed |
+| `eef_pose` | `[N, 7]` | m and wxyz quaternion in the robot-root frame |
 | instruction | string per env | passed at episode start |
 
-The reference brain resizes the left exterior and the wrist to 180x320 and converts a relative action chunk to absolute joint targets. Horizon is 8. `cam_exterior_right` is the same over-shoulder view from the other side, for a policy trained on two exterior cameras. `cam_front` looks at the table from the front and is not part of the observation sent to the brain. Mounting `/output/videos` writes three files per shard: `front_<job_id>.mp4`, `exterior_left_<job_id>.mp4`, and `wrist_<job_id>.mp4`. Each frame is 720x1280, with the shard's environments in a 4x4 grid and env 0 at the top left.
+`cam_exterior_left` and `cam_exterior_right` are the same over-shoulder view from opposite sides. `cam_wrist` looks out from the gripper. `cam_front` looks at the table from the front and is recorded for review. The observation sent to the brain is the two exterior cameras and the wrist.
 
-## Public and hidden
+The reference brain resizes the left exterior and the wrist to 180×320 and converts a relative action chunk to absolute joint targets. Horizon is 8. `cam_exterior_right` is there for a policy trained on two exterior cameras.
 
-Public seeds and instruction wording ship in this package so a model can be trained. Each tournament phase replaces them with a hidden bundle: different seeds, object layouts, and instruction pools. The phase config names that bundle. Participants do not receive it.
+Mounting `/output/videos` writes three files per shard: `front_<job_id>.mp4`, `exterior_left_<job_id>.mp4`, and `wrist_<job_id>.mp4`. Each frame is 720×1280, with the shard's environments in a 4×4 grid and env 0 at the top left.
 
-## Submission
+## Task
 
-The brain image mounts this directory. It is not a container build. Locally, and inside the sandbox, the layout is:
+`Unidroid-FrankaTabletop-Envhub-Play-v0` is the Gym id. `./isaaclab.sh` discovers it through the `isaaclab.tasks` entry point. The phase bundle supplies the scenes, and an episode succeeds when its predicate stays true for 0.5 s.
 
-```
-agent.yaml
-brain/
-weights/     # full checkpoint, hashes listed in agent.yaml
-train/       # kept for review, not executed
-```
+The phase bundle supplies each scene, including its instruction. A later phase uses another bundle, with different seeds, layouts, and wording. The bundle is the `bundle_path` argument or `ISAAC_EVAL_BUNDLE_DIR` when one of those is set, otherwise `~/.unidroid/bench-cache/<env_id>/bundle`, and otherwise the envhub download.
 
-A Franka tournament does not take `weights/` in the uploaded archive. Keep the checkpoint in a private Hugging Face model repo under your own user account, then submit only the code archive and a signed seal:
+## Install
+
+Install inside an Isaac Lab 3.0 environment:
 
 ```bash
-npcli tournament proof --path ./my-agent --tournament-id <id>
-# copy nepher-proof.json to the Hugging Face repo root, push, and note the 40-character commit SHA
-npcli tournament check --path ./my-agent --submission-mode huggingface
-npcli tournament submit --path ./my-agent --tournament-id <id> \
-    --hf-repo alice/my-weights --hf-revision <40-hex commit> --hf-token <read-only token>
+pip install -e source/franka_tabletop
 ```
 
-The token must be fine-grained and limited to read access on that one repo. Leave the repo private, and do not push changed weights after submitting. The public GR00T checkpoint may be submitted once; a later copy of those same files is rejected. A fine-tune may still include those files.
+## License
 
-`examples/gr00t_n17_zero_shot` is a complete example. Adding the base checkpoint under `weights/` and its hashes makes it the zero-shot baseline.
+BSD-3-Clause. Copyright (c) 2026 Unidroid. See [LICENSE](LICENSE).
 
-`embodiment_tag` in `agent.yaml` must be the tag of that checkpoint's Franka joint-position embodiment. The tag is not hard-coded in this repository.
-
-## Scripts
-
-- `scripts/play_brain.py` prints a public-seed instruction for a local brain socket.
-- `scripts/record_demos.py` writes a starter fine-tuning dataset from a scripted expert.
-- `scripts/build_envhub_bundle.py` is Nepher-internal. It writes the hidden phase bundle. The license sidecar is a separate path and is not placed in the bundle.
-
-Install the package with `pip install -e source/franka_tabletop` inside an Isaac Lab 3.0 environment.
-
-## Validator host
-
-These checks need a Linux host with a GPU, Isaac Sim 6.1, and the NVIDIA Container Toolkit. They are not part of the unit tests:
-
-- Launch one task family with the zero-action brain over a loopback socket and a two-job manifest, then run the same two shards twice and compare trajectory hashes.
-- Add the base checkpoint under `examples/gr00t_n17_zero_shot/weights`, fill its sha256 values, and score it as the phase-1 baseline.
-- Build `nepher-brain-images/gr00t-n17-v0` with `build_and_push.sh`, then pull that digest and run check, smoke, and the existing sandbox image with `RUNTIME=brain`.
+**Keywords:** Franka, Robotiq 2F-85, tabletop manipulation, pick and place, language instruction, joint position, NVIDIA Isaac Lab, Isaac Sim, Unidroid, Unidroid-FrankaTabletop.

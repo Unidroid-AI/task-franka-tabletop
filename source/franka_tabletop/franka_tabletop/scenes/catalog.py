@@ -1,4 +1,4 @@
-# Copyright (c) 2026, Nepher Robotics
+# Copyright (c) 2026, Unidroid
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -24,7 +24,3 @@ class ObjectAsset:
         if self.usd.startswith("assets/"):
             return self.usd
         return f"assets/objects/{self.usd}"
-
-
-# Seeds for local play and demo recording. Benchmark episodes use the bundle's own scenes.
-PUBLIC_SEEDS = (11, 23, 37, 41, 59)
